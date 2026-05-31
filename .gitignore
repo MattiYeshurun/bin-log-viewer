@@ -1,0 +1,15 @@
+data/*.bin
+*.bin
+
+__pycache__/
+*.pyc
+
+.venv/
+venv/
+.mypy_cache/
+.idea/
+.vscode/
+.pytest_cache/
+data/
+.env/
+
