@@ -1,6 +1,9 @@
+import logging
 from typing import List, Tuple
 
 from pymavlink import mavutil
+
+logger = logging.getLogger(__name__)
 
 
 class LogParser:
@@ -11,10 +14,10 @@ class LogParser:
         try:
             log = mavutil.mavlink_connection(file_path)
         except Exception as e:
-            print(f"Error opening file {file_path}: {e}")
+            logger.error("Error opening file %s: %s", file_path, e)
             return synced_data
 
-        print(f"[PARSER] Starting log file scanning: {file_path}")
+        logger.info("Starting log file scanning: %s", file_path)
 
         while True:
             message = log.recv_match(type="GPS", blocking=False)
@@ -33,8 +36,8 @@ class LogParser:
                     synced_data.append((round(lat, 6), round(lng, 6)))
 
                 except Exception as e:
-                    print(f"[PARSER] Unexpected error parsing message: {e}")
-                    continue
+                    logger.error("Unexpected error parsing message: %s", e)
+            log.close()
 
-        print(f"[PARSER] Scanning finished. {len(synced_data)} points extracted.")
+        logger.info("Scanning finished. %d points extracted.", len(synced_data))
         return synced_data

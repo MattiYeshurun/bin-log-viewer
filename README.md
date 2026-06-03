@@ -1,97 +1,175 @@
-# MAVLink Binary Log GPS Parser & Map Viewer
+# Bin Log Viewer & GPS Track Extractor
 
-A highly optimized Python application designed to extract, filter, and visualize GPS coordinate paths from MAVLink binary (`.bin`) flight logs. It features a fast binary log parser and a beautiful interactive map viewer.
+Python application for extracting GPS coordinates from MAVLink `.bin` telemetry logs and visualizing the resulting flight path on an interactive map.
+
+The project is designed for developers and operators who need a lightweight desktop viewer for GPS tracks inside MAVLink binary logs, with an easy file picker and a simple `flet` map UI.
 
 ---
 
-## 📂 Project Structure
-
-The project is structured according to professional Python packaging best practices:
+## 📁 Current Project Structure
 
 ```text
-Overlap_task_01_20.05.26/
-├── data/
-│   └── log_file_test_01.bin      # MAVLink binary flight logs
-├── src/                          # Application source code
-│   ├── bin_parser/
-│   │   ├── __init__.py           # Package marker
-│   │   └── log_parser.py         # MAVLink binary file parser
-│   ├── gui/
-│   │   ├── __init__.py           # Package marker
-│   │   └── app_layout.py         # Interactive Flet map layout
-│   └── main.py                   # Main application entrypoint
+bin-log-viewer_24.05.26/
+├── data/                                   # Optional sample logs or test data
+├── src/                                    # Application source code
+│   ├── buisness_logic/
+│   │   ├── bin_parser/
+│   │   │   ├── __init__.py
+│   │   │   └── log_parser.py               # GPS extraction logic from MAVLink logs
+│   │   └── gui/
+│   │       ├── __init__.py
+│   │       └── app_layout.py                # Flet GUI and map layout
+│   └── main.py                             # App entrypoint
 ├── tests/
-│   └── test_bin_parser.py        # Robust unit & edge-case test suite
-├── pytest.ini                    # Pytest configuration (verbose output)
-├── requirements.txt              # Project dependencies
-└── README.md                     # Project documentation
+│   └── test_bin_parser.py                  # Unit tests for parser behavior
+├── pytest.ini                              # Pytest configuration
+├── requirements.txt                        # Python dependencies
+└── README.md                               # Project documentation
 ```
 
 ---
 
-## ⚡ Key Features & Optimizations
+## 🚀 What This App Does
 
-- **High Performance Scanning**: Optimized file scanner parses large binary files (e.g., **300 MB logs**) and processes over **64,000 GPS messages in less than 5 seconds** (down from 20s by eliminating console I/O bottlenecks).
-- **Fault-Tolerant Parsing**: Parser is resilient against packet corruption. Any isolated message error is logged, and the scanning safely continues parsing the remaining data.
-- **Smart GPS Filtering**: Removes consecutive duplicate coordinates automatically (reducing redundant logs by over 5% when stationary or hovering).
-- **Interactive Map Visualizer**: Renders the complete flight path trajectory on a map using a Flet desktop wrapper.
+This application performs three main steps:
 
----
+1. `LogParser.extract_gps_coordinates()` opens a MAVLink `.bin` log using `pymavlink`
+2. It scans all incoming `GPS` messages and keeps only valid coordinates
+3. It displays the GPS track on a `flet_map` interactive map inside a desktop UI
 
-## 🛠️ Installation & Setup
+### What is considered a valid GPS point?
 
-1. **Clone or Open the Workspace**  
-   Open the project folder in your terminal:
-   ```bash
-   cd Overlap_task_01_20.05.26
-   ```
+- `message.U == 1`
+- `message.Lat` is not `None` and not `0.0`
+- `message.Lng` is not `None` and not `0.0`
+- Latitude and longitude are rounded to 6 decimal places
 
-2. **Set Up a Virtual Environment**  
-   Create and activate a local Python virtual environment:
-   ```powershell
-   # Create virtual environment
-   python -m venv .venv
+### User-facing behavior
 
-   # Activate virtual environment (Windows PowerShell)
-   .venv\Scripts\Activate.ps1
-   ```
-
-3. **Install Dependencies**  
-   Install all required libraries including `pymavlink` and `flet`:
-   ```powershell
-   pip install -r requirements.txt
-   ```
+- A native file dialog appears when clicking **Select BIN File**
+- The app parses the selected `.bin` log in a background task
+- The map displays a red polyline representing the track
+- The first point is shown with a green marker, the last point with a blue marker
+- If the log contains no valid GPS points, the app shows a friendly status message
 
 ---
 
-## 🚀 Running the Application
+## 🧩 Architecture Overview
 
-To start the **Bin Log Viewer & Map GUI**, simply execute the main file:
+### `src/main.py`
+
+- Sets up logging configuration
+- Launches the `flet` runtime
+- Calls `gui_main()` from `app_layout.py`
+
+### `src/buisness_logic/gui/app_layout.py`
+
+- Builds the `flet` page layout with sidebar, status text, progress bar, and map
+- Uses `Tkinter` to open a native file picker on Windows
+- Processes the selected file asynchronously with `asyncio.to_thread`
+- Updates the map using `flet_map` layers:
+  - `TileLayer` for the base map
+  - `PolylineLayer` for the GPS path
+  - `MarkerLayer` for start/end markers
+
+### `src/buisness_logic/bin_parser/log_parser.py`
+
+- Opens the `.bin` log using `pymavlink.mavutil.mavlink_connection()`
+- Reads messages using `recv_match(type="GPS", blocking=False)` in a loop
+- Validates and rounds coordinates
+- Logs errors and continues parsing even when a single message is corrupt
+
+### `tests/test_bin_parser.py`
+
+- Mocks `pymavlink` connection behavior to avoid real file dependencies
+- Verifies:
+  - file open failures are handled safely
+  - empty logs return an empty list
+  - invalid GPS messages are skipped
+  - corrupted messages do not stop parsing
+  - rounding, missing values, and type edge cases are handled correctly
+
+---
+
+## ⚙️ Installation
+
+1. Open the repository root in a terminal.
+2. Create and activate a virtual environment:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+3. Install dependencies:
+
+```powershell
+pip install -r requirements.txt
+```
+
+### Recommended tooling
+
+The repository also includes developer tools in `requirements.txt` for formatting and static analysis:
+
+- `black`
+- `isort`
+- `mypy`
+- `pylint`
+- `folium`
+
+These packages are optional for running the app, but useful when improving or maintaining the code.
+
+---
+
+## ▶️ Run the App
+
+Launch the GUI with:
 
 ```powershell
 .venv\Scripts\python src/main.py
 ```
 
-### GUI Features:
-- Click **"Select BIN File"** to open a file dialogue.
-- Load any MAVLink `.bin` file.
-- The map automatically centers, zooms, and highlights the **Start point (Green)**, **End point (Blue)**, and the **Flight Route (Red line)**.
+Once open:
+
+- Click **Select BIN File**
+- Choose a `.bin` MAVLink log
+- Wait for the parser to finish
+- View the extracted route on the map
 
 ---
 
-## 🧪 Running Unit Tests
+## 🧪 Run Tests
 
-We have implemented a robust, comprehensive unit test suite covering extreme edge cases, parsing failures, and corrupted packets.
-
-To run the tests with detailed verbose outputs showing all validation print messages:
+Run the parser unit tests with:
 
 ```powershell
 .venv\Scripts\python -m pytest
 ```
 
-### Edge Cases Covered:
-- **File Access Failure**: Gracefully returns empty list if log cannot be loaded.
-- **Empty Logs**: Safely handles logs lacking GPS coordinates.
-- **Mixed Validation**: Rejects invalid states (`U != 1`), `0.0` zero coordinates, or `None` values.
-- **Robust Failure Resilience**: Correctly skips corrupt packets and parses surrounding messages.
-- **Boundary & Rounding**: Checks coordinate rounding behavior, negative values, and type variance (e.g., float vs string for status).
+If you want to run only the parser tests:
+
+```powershell
+.venv\Scripts\python -m pytest tests/test_bin_parser.py
+```
+
+---
+
+## 🛠️ Notes and Limitations
+
+- The current parser only checks `GPS` message objects and a single flag `U == 1`.
+- Invalid coordinates such as `0.0`, `None`, or missing attributes are skipped.
+- The GUI down-samples the track to every 10th extracted point for display performance.
+- The tile server is configured to use the ArcGIS world street map template.
+- The app assumes a desktop environment with a native file dialog.
+
+---
+
+## 💡 How to Extend
+
+Suggested improvements:
+
+- Add duplicate coordinate filtering to remove consecutive identical points
+- Support additional MAVLink GPS message types or fields
+- Add an export feature for parsed GPS points to CSV or GeoJSON
+- Add zoom controls, map layer selection, or track info display
+- Add a command-line mode for batch processing without the GUI
