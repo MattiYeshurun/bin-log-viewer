@@ -2,7 +2,7 @@
 
 Python application for extracting GPS coordinates from MAVLink `.bin` telemetry logs and visualizing the resulting flight path on an interactive map.
 
-The project is designed for developers and operators who need a lightweight desktop viewer for GPS tracks inside MAVLink binary logs, with an easy file picker and a simple `flet` map UI.
+The project is designed for developers and operators who need a lightweight desktop viewer for GPS tracks inside MAVLink binary logs, with Flet's built-in file picker and a simple `flet` map UI.
 
 ---
 
@@ -39,18 +39,19 @@ This application performs three main steps:
 
 ### What is considered a valid GPS point?
 
-- `message.U == 1`
-- `message.Lat` is not `None` and not `0.0`
-- `message.Lng` is not `None` and not `0.0`
+- `message.to_dict()["U"] == 1`
+- `Lat` is not `None` and not `0`
+- `Lng` is not `None` and not `0`
 - Latitude and longitude are rounded to 6 decimal places
 
 ### User-facing behavior
 
-- A native file dialog appears when clicking **Select BIN File**
-- The app parses the selected `.bin` log in a background task
+- Flet's built-in `FilePicker` dialog appears when clicking **Select BIN File**
+- The app parses the selected `.bin` log in a background task using `asyncio.to_thread`
 - The map displays a red polyline representing the track
 - The first point is shown with a green marker, the last point with a blue marker
 - If the log contains no valid GPS points, the app shows a friendly status message
+- If the selected file is empty (0 bytes), a `ValueError` is raised with a clear error message
 
 ---
 
@@ -65,8 +66,10 @@ This application performs three main steps:
 ### `src/buisness_logic/gui/app_layout.py`
 
 - Builds the `flet` page layout with sidebar, status text, progress bar, and map
-- Uses `Tkinter` to open a native file picker on Windows
+- Uses Flet's built-in `ft.FilePicker` to open a file selection dialog (async API)
+- The `pick_files()` method is `async` and returns selected files directly — no callback needed
 - Processes the selected file asynchronously with `asyncio.to_thread`
+- Moves the map to the starting GPS point using `await map_control.move_to()` (async)
 - Updates the map using `flet_map` layers:
   - `TileLayer` for the base map
   - `PolylineLayer` for the GPS path
@@ -74,20 +77,26 @@ This application performs three main steps:
 
 ### `src/buisness_logic/bin_parser/log_parser.py`
 
+- Validates that the file is not empty before processing (raises `ValueError` if 0 bytes)
 - Opens the `.bin` log using `pymavlink.mavutil.mavlink_connection()`
 - Reads messages using `recv_match(type="GPS", blocking=False)` in a loop
+- Converts each message to a dict using `message.to_dict()` and accesses fields via `dict.get()`
 - Validates and rounds coordinates
+- Uses a `try/finally` block to guarantee `log.close()` is always called
 - Logs errors and continues parsing even when a single message is corrupt
 
 ### `tests/test_bin_parser.py`
 
 - Mocks `pymavlink` connection behavior to avoid real file dependencies
+- Uses `to_dict()` mock return values matching the current parser implementation
 - Verifies:
+  - empty files raise `ValueError`
   - file open failures are handled safely
   - empty logs return an empty list
   - invalid GPS messages are skipped
   - corrupted messages do not stop parsing
   - rounding, missing values, and type edge cases are handled correctly
+  - `log.close()` is always called (even after exceptions)
 
 ---
 
@@ -157,10 +166,11 @@ If you want to run only the parser tests:
 ## 🛠️ Notes and Limitations
 
 - The current parser only checks `GPS` message objects and a single flag `U == 1`.
-- Invalid coordinates such as `0.0`, `None`, or missing attributes are skipped.
+- Invalid coordinates such as `0`, `None`, or missing keys are skipped.
+- Empty files (0 bytes) are rejected upfront with a `ValueError`.
 - The GUI down-samples the track to every 10th extracted point for display performance.
 - The tile server is configured to use the ArcGIS world street map template.
-- The app assumes a desktop environment with a native file dialog.
+- The app uses Flet's built-in `FilePicker` — no external dependencies like `tkinter` are needed.
 
 ---
 

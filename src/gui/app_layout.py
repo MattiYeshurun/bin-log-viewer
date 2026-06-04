@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-from tkinter import Tk, filedialog
 from typing import List, Tuple
 
 import flet as ft
@@ -27,6 +26,7 @@ class BinLogViewerApp:
 
         self.status_text = ft.Text(value="Please select a Bin file to process...", size=14, italic=True)
         self.progress_bar = ft.ProgressBar(width=200, visible=False)
+        self.file_picker = ft.FilePicker()
         self.upload_btn = ft.Button(
             content=ft.Text("Select BIN File"), icon="folder", on_click=self.on_select_file_click
         )
@@ -71,19 +71,20 @@ class BinLogViewerApp:
 
     def on_select_file_click(self, e: ft.ControlEvent) -> None:
         logger.info("Opening file selection dialog")
-        root = Tk()
-        root.withdraw()
-        root.attributes("-topmost", True)
-        file_path = filedialog.askopenfilename(
-            title="Select BIN Log File",
-            filetypes=[("BIN files", "*.bin"), ("All files", "*.*")],
-        )
-        root.destroy()
+        self.page.run_task(self.pick_and_process_file)
 
-        if file_path:
+    async def pick_and_process_file(self) -> None:
+        files = await self.file_picker.pick_files(
+            dialog_title="Select BIN Log File",
+            file_type=ft.FilePickerFileType.CUSTOM,
+            allowed_extensions=["bin"],
+            allow_multiple=False,
+        )
+        if files:
+            file_path = files[0].path
             logger.info("File selected: %s", os.path.basename(file_path))
             self.set_state(f'Loading "{os.path.basename(file_path)}", please wait...', loading=True, btn_disabled=True)
-            self.page.run_task(self.process_file, file_path)
+            await self.process_file(file_path)
         else:
             logger.info("File selection cancelled by user")
             self.set_state("No file selected.")
@@ -94,17 +95,16 @@ class BinLogViewerApp:
             self.extracted_points = await asyncio.to_thread(LogParser.extract_gps_coordinates, file_path)
             logger.info("File parsed successfully, %d points extracted", len(self.extracted_points))
             self.update_map()
-            
+
         except Exception as ex:
             logger.error("Error processing file %s: %s", file_path, ex)
             self.set_state(f"Error: {ex}")
-            
+
         finally:
             logger.info("Cleaning up after processing task.")
-            if not self.extracted_points:
-                self.progress_bar.visible = False
-                self.upload_btn.disabled = False
-                self.page.update()
+            self.progress_bar.visible = False
+            self.upload_btn.disabled = False
+            self.page.update()
 
     def make_marker(self, lat: float, lng: float, color: str) -> ftm.Marker:
         return ftm.Marker(
@@ -122,7 +122,7 @@ class BinLogViewerApp:
             return
 
         sampled_points = self.extracted_points[::10]
-        
+
         coords = [ftm.MapLatitudeLongitude(latitude=lat, longitude=lng) for lat, lng in sampled_points]
 
         self.map_control.layers = [
@@ -137,9 +137,7 @@ class BinLogViewerApp:
         ]
 
         start = self.extracted_points[0]
-        self.page.run_task(
-            self.map_control.move_to, ftm.MapLatitudeLongitude(latitude=start[0], longitude=start[1]), 12
-        )
+        self.page.run_task(self.move_to_start, start)
 
         self.set_state(
             f"Loaded {len(self.extracted_points)} points. "
@@ -147,6 +145,11 @@ class BinLogViewerApp:
         )
         self.map_control.update()
         logger.info("Map updated with %d downsampled coordinates", len(sampled_points))
+
+    async def move_to_start(self, start: Tuple[float, float]) -> None:
+        await self.map_control.move_to(
+            destination=ftm.MapLatitudeLongitude(latitude=start[0], longitude=start[1]), zoom=12
+        )
 
 
 def main(page: ft.Page) -> None:

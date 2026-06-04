@@ -5,7 +5,7 @@ from pathlib import Path
 import flet as ft
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from buisness_logic.gui.app_layout import main as gui_main
+from gui.app_layout import main as gui_main
 
 logging.basicConfig(
     level=logging.INFO,

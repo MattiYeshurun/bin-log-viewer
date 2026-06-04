@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import List, Tuple
 
 from pymavlink import mavutil
@@ -11,6 +12,11 @@ class LogParser:
     @staticmethod
     def extract_gps_coordinates(file_path: str) -> List[Tuple[float, float]]:
         synced_data: list[tuple[float, float]] = []
+
+        if os.path.getsize(file_path) == 0:
+            logger.error("File is empty: %s", file_path)
+            raise ValueError(f"The file '{os.path.basename(file_path)}' is empty.")
+
         try:
             log = mavutil.mavlink_connection(file_path)
         except Exception as e:
@@ -19,24 +25,27 @@ class LogParser:
 
         logger.info("Starting log file scanning: %s", file_path)
 
-        while True:
-            message = log.recv_match(type="GPS", blocking=False)
+        try:
+            while True:
+                message = log.recv_match(type="GPS", blocking=False)
 
-            if message is None:
-                break
+                if message is None:
+                    break
 
-            if getattr(message, "U", None) == 1:
-                try:
-                    lat = getattr(message, "Lat", None)
-                    lng = getattr(message, "Lng", None)
+                data = message.to_dict()
+                if data.get("U") == 1:
+                    try:
+                        lat = data.get("Lat")
+                        lng = data.get("Lng")
 
-                    if lat == 0 or lng == 0 or lat is None or lng is None:
-                        continue
+                        if lat == 0 or lng == 0 or lat is None or lng is None:
+                            continue
 
-                    synced_data.append((round(lat, 6), round(lng, 6)))
+                        synced_data.append((round(lat, 6), round(lng, 6)))
 
-                except Exception as e:
-                    logger.error("Unexpected error parsing message: %s", e)
+                    except Exception as e:
+                        logger.error("Unexpected error parsing message: %s", e)
+        finally:
             log.close()
 
         logger.info("Scanning finished. %d points extracted.", len(synced_data))
